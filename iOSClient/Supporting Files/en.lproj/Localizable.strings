@@ -118,6 +118,7 @@
 "_maximum_"                 = "Maximum";
 "_error_occurred_"          = "An error occurred, please try again.";
 "_offline_editing_banner_"  = "Offline — changes will sync when connected";
+"_editor_session_expired_"  = "Editor session expired. Close and reopen the file to continue editing.";
 "_retry_"                   = "Retry";
 "_images_"                  = "Images";
 "_confirm_"                 = "Confirm";
