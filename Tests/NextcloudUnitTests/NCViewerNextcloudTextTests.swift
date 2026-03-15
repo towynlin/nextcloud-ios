@@ -114,4 +114,39 @@ struct NCViewerNextcloudTextTests {
 
         #expect(vc.loadingTimeoutTimer == nil)
     }
+
+    // MARK: - Session recovery
+
+    @Test("editorHasLoaded is false initially")
+    func editorHasLoadedInitiallyFalse() {
+        let vc = makeViewController()
+
+        #expect(vc.editorHasLoaded == false)
+    }
+
+    @Test("didFinish sets editorHasLoaded to true")
+    func didFinishSetsEditorHasLoaded() {
+        let vc = makeViewController()
+
+        vc.webView(vc.webView, didFinish: nil)
+
+        #expect(vc.editorHasLoaded == true)
+    }
+
+    @Test("editorHasLoaded stays false after loading error")
+    func errorDoesNotSetEditorHasLoaded() {
+        let vc = makeViewController()
+
+        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        vc.webView(vc.webView, didFailProvisionalNavigation: nil, withError: error)
+
+        #expect(vc.editorHasLoaded == false)
+    }
+
+    @Test("sessionRecoveryInterval defaults to 3 seconds")
+    func defaultSessionRecoveryInterval() {
+        let vc = makeViewController()
+
+        #expect(vc.sessionRecoveryInterval == 3.0)
+    }
 }

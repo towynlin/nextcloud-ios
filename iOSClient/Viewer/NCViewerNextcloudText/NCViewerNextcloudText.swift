@@ -18,6 +18,8 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
     var didEncounterLoadingError = false
     var loadingTimeoutInterval: TimeInterval = 10.0
     var loadingTimeoutTimer: Timer?
+    var editorHasLoaded = false
+    var sessionRecoveryInterval: TimeInterval = 3.0
 
     @MainActor
     var controller: NCMainTabBarController? {
@@ -118,6 +120,7 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
 
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidShow), name: UIResponder.keyboardDidShowNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -154,6 +157,7 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
 
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardDidShowNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     @objc func viewUnload() {
@@ -172,6 +176,40 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
 
     @objc func keyboardWillHide(notification: Notification) {
         bottomConstraint?.constant = 0
+    }
+
+    @objc func appDidBecomeActive() {
+        guard editorHasLoaded, !didEncounterLoadingError else { return }
+        checkSessionHealth()
+    }
+
+    private func checkSessionHealth() {
+        Task { @MainActor in
+            let isAlive = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                var resumed = false
+                webView.evaluateJavaScript("document.readyState") { result, error in
+                    guard !resumed else { return }
+                    resumed = true
+                    continuation.resume(returning: error == nil && result != nil)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + sessionRecoveryInterval) {
+                    guard !resumed else { return }
+                    resumed = true
+                    continuation.resume(returning: false)
+                }
+            }
+            if !isAlive {
+                handleSessionExpired()
+            }
+        }
+    }
+
+    private func handleSessionExpired() {
+        didEncounterLoadingError = true
+        let windowScene = SceneManager.shared.getWindowScene(controller: controller)
+        Task {
+            await showErrorBanner(windowScene: windowScene, text: NSLocalizedString("_editor_session_expired_", comment: ""), errorCode: 0)
+        }
     }
 
     // MARK: -
@@ -226,6 +264,7 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
         loadingTimeoutTimer?.invalidate()
         loadingTimeoutTimer = nil
         didEncounterLoadingError = false
+        editorHasLoaded = true
         NCActivityIndicator.shared.stop()
     }
 
