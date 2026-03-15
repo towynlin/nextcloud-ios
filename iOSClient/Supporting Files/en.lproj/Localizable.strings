@@ -113,6 +113,7 @@
 "_maximum_"                 = "Maximum";
 "_error_occurred_"          = "An error occurred, please try again.";
 "_error_loading_editor_"    = "Unable to load the editor. Check your connection and try again.";
+"_offline_editing_banner_"  = "Offline — changes will sync when connected";
 "_retry_"                   = "Retry";
 "_images_"                  = "Images";
 "_confirm_"                 = "Confirm";
