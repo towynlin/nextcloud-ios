@@ -60,3 +60,25 @@ The `MarkdownEditorTheme` maps highlight names like `"keyword"`, `"string"`, `"c
 ### Xcode project file
 
 - [ ] The `project.pbxproj` edits were done by hand. Xcode may reformat or reorder entries on first open. This is cosmetic but may cause a noisy diff.
+
+## Phase 3 — Session Recovery on App Resume (`claude/session-recovery-PV8gg`)
+
+**Medium confidence.** The approach is sound but the JS probe has nuances.
+
+### JS probe may give false positives
+
+`document.readyState` checks whether the WebView's DOM is intact, not whether the Nextcloud Text *editor session* is still valid on the server. A stale page can return `"complete"` even if the editing WebSocket/polling connection has died. The editor might look loaded but be unable to save changes.
+
+- [ ] Test: open editor, lock phone for 10+ minutes, unlock — does the probe catch a dead session?
+- [ ] If not, consider probing with an editor-specific JS expression (e.g., checking if the Nextcloud Text editing API is responsive) instead of generic `document.readyState`
+- [ ] For now, this is still an improvement: it catches hard crashes (WebView process killed) and full page failures, which are the most common cases
+
+### Race condition on rapid foreground/background cycling
+
+If the user rapidly switches apps, multiple `appDidBecomeActive` calls could fire while a previous `checkSessionHealth()` is still awaiting its probe. The `didEncounterLoadingError` guard prevents duplicate error banners after the first failure, but multiple concurrent JS evaluations could run.
+
+- [ ] Acceptable for now — the worst case is redundant JS evaluations, not incorrect behavior
+
+### Localization
+
+- [ ] `_editor_session_expired_` will show English in non-English locales until translated via Transifex
