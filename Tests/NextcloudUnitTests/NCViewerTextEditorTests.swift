@@ -30,7 +30,7 @@ struct NCViewerTextEditorTests {
         let path = makeTempFile(content: content)
         let vc = makeEditor(filePath: path)
 
-        #expect(vc.textView.text == content)
+        #expect(vc.editorText == content)
     }
 
     @Test("Handles empty file")
@@ -38,7 +38,7 @@ struct NCViewerTextEditorTests {
         let path = makeTempFile(content: "")
         let vc = makeEditor(filePath: path)
 
-        #expect(vc.textView.text == "")
+        #expect(vc.editorText == "")
     }
 
     // MARK: - Navigation bar
@@ -66,7 +66,7 @@ struct NCViewerTextEditorTests {
         let path = makeTempFile(content: "original")
         let vc = makeEditor(filePath: path)
 
-        vc.textView.text = "modified content"
+        vc.setEditorText("modified content")
         vc.saveFile()
 
         let saved = try! String(contentsOfFile: path, encoding: .utf8)
@@ -87,6 +87,15 @@ struct NCViewerTextEditorTests {
         vc.loadViewIfNeeded()
 
         #expect(vc.saveFile() == false)
+    }
+
+    // MARK: - Syntax highlighting
+
+    @Test("Editor shows line numbers")
+    func showsLineNumbers() {
+        let vc = makeEditor()
+
+        #expect(vc.showsLineNumbers == true)
     }
 
     // MARK: - Offline banner

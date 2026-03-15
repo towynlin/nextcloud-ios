@@ -2,14 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import UIKit
+import Runestone
+import RunestoneTreeSitterMarkdown
 
 class NCViewerTextEditor: UIViewController {
-    let textView = UITextView()
+    let textView = TextView()
     private(set) var offlineBanner: UILabel?
     private let filePath: String
     private let metadata: tableMetadata
     private let utilityFileSystem = NCUtilityFileSystem()
     private let database = NCManageDatabase.shared
+
+    var editorText: String {
+        textView.text
+    }
+
+    var showsLineNumbers: Bool {
+        textView.showLineNumbers
+    }
 
     init(filePath: String, metadata: tableMetadata) {
         self.filePath = filePath
@@ -73,7 +83,8 @@ class NCViewerTextEditor: UIViewController {
     }
 
     private func setupTextView() {
-        textView.font = .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
+        textView.showLineNumbers = true
+        textView.isLineWrappingEnabled = true
         textView.autocapitalizationType = .none
         textView.autocorrectionType = .default
         textView.translatesAutoresizingMaskIntoConstraints = false
@@ -90,13 +101,18 @@ class NCViewerTextEditor: UIViewController {
     // MARK: - File I/O
 
     private func loadFile() {
-        guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else { return }
-        textView.text = content
+        let content = (try? String(contentsOfFile: filePath, encoding: .utf8)) ?? ""
+        let state = TextViewState(text: content, theme: MarkdownEditorTheme(), language: .markdown)
+        textView.setState(state)
+    }
+
+    func setEditorText(_ text: String) {
+        textView.text = text
     }
 
     @discardableResult
     func saveFile() -> Bool {
-        guard let text = textView.text else { return false }
+        let text = textView.text
         do {
             try text.write(toFile: filePath, atomically: true, encoding: .utf8)
             return true
