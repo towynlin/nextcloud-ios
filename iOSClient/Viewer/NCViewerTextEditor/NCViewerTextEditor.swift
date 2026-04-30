@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import UIKit
+import Runestone
+import TreeSitterMarkdownRunestone
 
 class NCViewerTextEditor: UIViewController {
-    let textView = UITextView()
+    let textView = TextView()
     private(set) var offlineBanner: UILabel?
     private let filePath: String
     private let metadata: tableMetadata
@@ -73,9 +75,14 @@ class NCViewerTextEditor: UIViewController {
     }
 
     private func setupTextView() {
-        textView.font = .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
+        textView.theme = MarkdownEditorTheme()
+        textView.showLineNumbers = false
+        textView.isLineWrappingEnabled = true
+        textView.lineHeightMultiplier = 1.2
         textView.autocapitalizationType = .none
         textView.autocorrectionType = .default
+        textView.smartQuotesType = .no
+        textView.smartDashesType = .no
         textView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(textView)
 
@@ -91,14 +98,17 @@ class NCViewerTextEditor: UIViewController {
 
     private func loadFile() {
         guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else { return }
-        textView.text = content
+        let state = TextViewState(text: content,
+                                  theme: textView.theme,
+                                  language: .markdown,
+                                  languageProvider: MarkdownEditorLanguageProvider())
+        textView.setState(state)
     }
 
     @discardableResult
     func saveFile() -> Bool {
-        guard let text = textView.text else { return false }
         do {
-            try text.write(toFile: filePath, atomically: true, encoding: .utf8)
+            try textView.text.write(toFile: filePath, atomically: true, encoding: .utf8)
             let newSize = utilityFileSystem.getFileSize(filePath: filePath)
             let ocId = metadata.ocId
             Task {
