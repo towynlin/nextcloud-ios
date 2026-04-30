@@ -111,7 +111,6 @@ class NCViewerTextEditor: UIViewController {
     }
 
     private func queueUploadToServer() {
-        let session = NCSession.shared.getSession(account: metadata.account)
         let ocId = NSUUID().uuidString
         let size = utilityFileSystem.getFileSize(filePath: filePath)
         let fileNamePath = utilityFileSystem.getDirectoryProviderStorageOcId(ocId, fileName: metadata.fileNameView, userId: metadata.userId, urlBase: metadata.urlBase)
@@ -119,19 +118,19 @@ class NCViewerTextEditor: UIViewController {
         guard utilityFileSystem.copyFile(atPath: filePath, toPath: fileNamePath) else { return }
 
         Task { @MainActor in
-            let metadataForUpload = await NCManageDatabaseCreateMetadata().createMetadataAsync(
-                fileName: metadata.fileName,
-                ocId: ocId,
-                serverUrl: metadata.serverUrl,
-                url: "",
-                session: session,
-                sceneIdentifier: nil)
-
+            let metadataForUpload = tableMetadata(value: metadata)
+            metadataForUpload.ocId = ocId
+            metadataForUpload.ocIdTransfer = ocId
+            metadataForUpload.etag = ocId
             metadataForUpload.session = NCNetworking.shared.sessionUploadBackground
             metadataForUpload.sessionSelector = NCGlobal.shared.selectorUploadFileNODelete
+            metadataForUpload.sessionError = ""
+            metadataForUpload.sessionTaskIdentifier = 0
             metadataForUpload.size = size
             metadataForUpload.status = NCGlobal.shared.metadataStatusWaitUpload
             metadataForUpload.sessionDate = Date()
+            metadataForUpload.uploadDate = Date() as NSDate
+            metadataForUpload.sceneIdentifier = nil
 
             database.addMetadata(metadataForUpload)
         }

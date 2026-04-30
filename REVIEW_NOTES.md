@@ -82,3 +82,34 @@ If the user rapidly switches apps, multiple `appDidBecomeActive` calls could fir
 ### Localization
 
 - [ ] `_editor_session_expired_` will show English in non-English locales until translated via Transifex
+
+## Phase 4 — "File was overwritten" warning on reopen after offline edit
+
+**Known issue, deferred.** After editing offline and uploading, reopening the file in the Nextcloud Text editor shows a banner: *"The file was overwritten. Your current changes cannot be auto-saved. Please choose how to proceed."* with an "Overwrite the file and save the current changes" button.
+
+### Why it happens
+
+Nextcloud Text persists per-user document state server-side (the in-flight collaborative-editing buffer + last-known content hash). Our offline upload goes through plain WebDAV, which updates the file but not Text's session state. On reopen, Text loads its session state, fetches the file, sees they no longer match, and warns. This would happen for any external modification to a Text-edited file (desktop sync, API, another client) — it is not unique to this offline-edit flow.
+
+The mid-session swap from web editor to local editor (when connectivity drops) probably makes it worse: the original Text WebSocket session is abandoned rather than gracefully closed, leaving more divergence for Text to detect on reopen.
+
+### The footgun
+
+The "Overwrite the file and save the current changes" button saves Text's *abandoned-session buffer* over the just-uploaded offline edits. Clicking it can clobber the offline work. Users should close the warning (or the editor) and reopen — the upload is already correct.
+
+### What was checked
+
+- `NextcloudKit` exposes `textOpenFile`, `textCreateFile`, `textObtainEditorDetails`, `textGetListOfTemplates` — **no `textCloseFile` or session-invalidation API**.
+- `WKWebView` uses `WKWebsiteDataStore.nonPersistent()`, so this is not local browser storage; it is server-side state.
+- The `directEditing/open` endpoint accepts an optional `fileId`. `NCViewer.swift` does not currently pass one.
+
+### Options, in increasing effort
+
+- [ ] **A. Accept and document.** Add an in-product note or release-notes entry warning users not to click "Overwrite" after an offline edit. Lowest effort, but lands a confusing-and-dangerous footgun on users.
+- [ ] **B. Graceful WebView close before swap.** In `swapToLocalEditor()`, `evaluateJavaScript` to dispatch `pagehide`/`beforeunload` or programmatically click the editor's close button before replacing the view controller. Gives Text's frontend a chance to end its session cleanly. Speculative — may or may not cause Text to release the server-side session.
+- [ ] **C. Pass `fileId` to `textOpenFileAsync`.** One-line change in `NCViewer.swift:135`. Unknown impact — Text *may* create a fresh session keyed by `fileId` rather than resuming a stale one. Cheap to try.
+- [ ] **D. Implement `textCloseFile` (or equivalent) against the OCS endpoint.** Either upstream in NextcloudKit or call the raw HTTP endpoint inline. Real fix; requires identifying the correct server endpoint (Text's `/apps/text/session/close` or similar) and possibly upstreaming.
+
+### Recommendation
+
+Try **C** first (cheap, plausibly helpful), then **B** (low cost, plausibly helpful), and fall back to **A** if neither resolves it. Skip **D** unless this becomes a recurring complaint.
