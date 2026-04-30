@@ -20,6 +20,8 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
     var loadingTimeoutTimer: Timer?
     var editorHasLoaded = false
     var sessionRecoveryInterval: TimeInterval = 3.0
+    var serverProbeInterval: TimeInterval = 15.0
+    private var serverProbeTimer: Timer?
 
     @MainActor
     var controller: NCMainTabBarController? {
@@ -116,9 +118,9 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
             tabBarController?.tabBar.isHidden = true
         }
 
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidShow), name: UIResponder.keyboardDidShowNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChangeFrame), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(networkReachabilityChanged), name: NSNotification.Name(rawValue: NCGlobal.shared.notificationCenterNetworkReachability), object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -129,6 +131,7 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
         }
 
         NCActivityIndicator.shared.start(backgroundView: view)
+        startServerProbe()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -146,9 +149,11 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
 
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "DirectEditingMobileInterface")
 
-        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardDidShowNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+        stopServerProbe()
+
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name(rawValue: NCGlobal.shared.notificationCenterNetworkReachability), object: nil)
     }
 
     @objc func viewUnload() {
@@ -157,21 +162,69 @@ class NCViewerNextcloudText: UIViewController, WKNavigationDelegate, WKScriptMes
 
     // MARK: - NotificationCenter
 
-    @objc func keyboardDidShow(notification: Notification) {
-        guard let info = notification.userInfo else { return }
-        guard let frameInfo = info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
-        let keyboardFrame = frameInfo.cgRectValue
-        let height = keyboardFrame.size.height
-        bottomConstraint?.constant = -height
-    }
-
-    @objc func keyboardWillHide(notification: Notification) {
-        bottomConstraint?.constant = 0
+    @objc func keyboardWillChangeFrame(notification: Notification) {
+        guard let info = notification.userInfo,
+              let endFrame = info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
+        let keyboardFrameInView = view.convert(endFrame.cgRectValue, from: nil)
+        let overlap = max(0, view.bounds.maxY - keyboardFrameInView.minY)
+        bottomConstraint?.constant = -overlap
     }
 
     @objc func appDidBecomeActive() {
         guard editorHasLoaded, !didEncounterLoadingError else { return }
         checkSessionHealth()
+    }
+
+    @objc func networkReachabilityChanged() {
+        guard !NCNetworking.shared.isOnline else { return }
+        swapToLocalEditor()
+    }
+
+    private func swapToLocalEditor() {
+        let utilityFileSystem = NCUtilityFileSystem()
+        guard utilityFileSystem.fileProviderStorageExists(metadata) else { return }
+        guard let nav = navigationController,
+              let index = nav.viewControllers.lastIndex(where: { $0 === self }) else { return }
+
+        let filePath = utilityFileSystem.getDirectoryProviderStorageOcId(metadata.ocId,
+                                                                         fileName: metadata.fileNameView,
+                                                                         userId: metadata.userId,
+                                                                         urlBase: metadata.urlBase)
+        let local = NCViewerTextEditor(filePath: filePath, metadata: metadata)
+        local.navigationItem.setBidiSafeTitle(metadata.fileNameView)
+        var stack = nav.viewControllers
+        stack[index] = local
+        nav.setViewControllers(stack, animated: false)
+    }
+
+    private func startServerProbe() {
+        stopServerProbe()
+        serverProbeTimer = Timer.scheduledTimer(withTimeInterval: serverProbeInterval, repeats: true) { [weak self] _ in
+            self?.probeServer()
+        }
+    }
+
+    private func stopServerProbe() {
+        serverProbeTimer?.invalidate()
+        serverProbeTimer = nil
+    }
+
+    private func probeServer() {
+        guard editorHasLoaded else { return }
+        guard let url = URL(string: metadata.urlBase + "/status.php") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 5
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let reachable = error == nil && (response as? HTTPURLResponse).map { $0.statusCode < 500 } ?? false
+                if !reachable {
+                    self.swapToLocalEditor()
+                }
+            }
+        }.resume()
     }
 
     private func checkSessionHealth() {
