@@ -99,6 +99,11 @@ class NCViewerTextEditor: UIViewController {
         guard let text = textView.text else { return false }
         do {
             try text.write(toFile: filePath, atomically: true, encoding: .utf8)
+            let newSize = utilityFileSystem.getFileSize(filePath: filePath)
+            let ocId = metadata.ocId
+            Task {
+                await database.setMetadataSizeAsync(ocId: ocId, size: newSize)
+            }
             return true
         } catch {
             return false

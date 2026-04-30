@@ -770,6 +770,15 @@ extension NCManageDatabase {
         }
     }
 
+    func setMetadataSizeAsync(ocId: String, size: Int64) async {
+        await core.performRealmWriteAsync { realm in
+            let result = realm.objects(tableMetadata.self)
+                .filter("ocId == %@", ocId)
+                .first
+            result?.size = size
+        }
+    }
+
     func setMetadataFileNameViewAsync(serverUrl: String, fileName: String, newFileNameView: String, account: String) async {
         await core.performRealmWriteAsync { realm in
             let result = realm.objects(tableMetadata.self)
