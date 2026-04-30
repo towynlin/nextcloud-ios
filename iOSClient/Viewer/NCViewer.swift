@@ -111,6 +111,10 @@ class NCViewer: NSObject {
             }
             // DirectEditing: Nextcloud Text - OnlyOffice
             if metadata.isAvailableDirectEditingEditorView {
+                if !NextcloudKit.shared.isNetworkReachable(), utilityFileSystem.fileProviderStorageExists(metadata) {
+                    return makeLocalTextEditor(metadata: metadata, image: image)
+                }
+
                 var options = NKRequestOptions()
                 var editor = ""
                 var editorViewController = ""
@@ -139,6 +143,9 @@ class NCViewer: NSObject {
                     NCActivityIndicator.shared.stop()
 
                     guard results.error == .success, let url = results.url else {
+                        if utilityFileSystem.fileProviderStorageExists(metadata) {
+                            return makeLocalTextEditor(metadata: metadata, image: image)
+                        }
                         let windowScene = SceneManager.shared.getWindowScene(controller: delegate?.tabBarController as? NCMainTabBarController)
                         await showErrorBanner(windowScene: windowScene, text: results.error.errorDescription, errorCode: results.error.errorCode)
                         return nil
@@ -172,6 +179,16 @@ class NCViewer: NSObject {
         }
 
         return nil
+    }
+
+    private func makeLocalTextEditor(metadata: tableMetadata, image: UIImage?) -> NCViewerTextEditor {
+        let filePath = utilityFileSystem.getDirectoryProviderStorageOcId(metadata.ocId,
+                                                                         fileName: metadata.fileNameView,
+                                                                         userId: metadata.userId,
+                                                                         urlBase: metadata.urlBase)
+        let vc = NCViewerTextEditor(filePath: filePath, metadata: metadata)
+        vc.navigationItem.setBidiSafeTitle(metadata.fileNameView)
+        return vc
     }
 
     func QLPreview(metadata: tableMetadata, delegate: UIViewController? = nil) {

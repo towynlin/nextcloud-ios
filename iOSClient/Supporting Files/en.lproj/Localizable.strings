@@ -112,6 +112,7 @@
 "_standard_"                = "Standard";
 "_maximum_"                 = "Maximum";
 "_error_occurred_"          = "An error occurred, please try again.";
+"_offline_editing_banner_"  = "Offline — changes will sync when connected";
 "_retry_"                   = "Retry";
 "_images_"                  = "Images";
 "_confirm_"                 = "Confirm";
